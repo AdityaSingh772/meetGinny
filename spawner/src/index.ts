@@ -1,42 +1,83 @@
-import { Builder, Browser, By, Key, until } from 'selenium-webdriver';
-import { Options } from 'selenium-webdriver/chrome';
+import { Builder, By, until } from "selenium-webdriver";
+import chrome, { Driver as ChromeDriver } from "selenium-webdriver/chrome.js";
+import { io, Socket } from "socket.io-client";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+async function injectAudioRecorder(driver: ChromeDriver, socket: Socket) {
+  const script = `
+    (function() {
+      if (!window.MediaRecorder) {
+        alert('MediaRecorder not supported in this browser.');
+        return;
+      }
+
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          const mediaRecorder = new MediaRecorder(stream);
+          let chunks = [];
+
+          mediaRecorder.ondataavailable = function(e) {
+            chunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = function() {
+            // Handle the stop event
+          };
+        })
+        .catch(error => {
+          console.error('Error accessing media devices.', error);
+        });
+    })();
+  `;
+  await driver.executeScript(script);
+}
 
 async function main() {
-    const options = new Options();
-    options.addArguments("--disable-blink-features=AutomationControlled");
-    options.addArguments("--use-fake-ui-for-media-stream"); 
-    options.addArguments("--start-maximized");
+  let options = new chrome.Options();
+  options.addArguments("--disable-blink-features=AutomationControlled");
+  options.addArguments("--use-fake-ui-for-media-stream");
+  options.addArguments("--start-maximized");
+  options.addArguments("--disable-web-security");
 
-    let driver = await new Builder()
-        .forBrowser(Browser.CHROME)
-        .setChromeOptions(options)
-        .build();
+  let driver: ChromeDriver = await new Builder().forBrowser("chrome").setChromeOptions(options).build() as ChromeDriver;
+  let socket: Socket = io("http://localhost:3000");
 
-    try {
-        await driver.get('https://meet.google.com/gmo-emet-cgb');
-        await driver.sleep(3000);
-        const popupButton = await driver.wait(
-            until.elementLocated(By.xpath('//span[contains(text(),"Got it")]')),
-            100000
-        );
-        await popupButton.click();
-        const inputName = await driver.wait(until.elementLocated(By.xpath('//input[@placeholder="Your name"]')), 20000);
-        await inputName.clear();
-        await inputName.click();
-        await inputName.sendKeys('value' , "Ginny bot");
-        const buttonInput = await driver.wait(
-            until.elementLocated(By.xpath('//span[contains(text(),"Ask to join") or contains(text(),"Join")]')),
-            100000
-        );
-        await buttonInput.click(); 
+  try {
+    await driver.get("https://meet.google.com/csg-enwe-eym");
 
-        await driver.wait(until.elementLocated(By.id('aa1313212a')), 1000000)
-                
-    } catch (error) {
-        console.error('An error occurred:', error);
-    } finally {
-        await driver.quit();
-    }
+    const popupButton = await driver.wait(
+      until.elementLocated(By.xpath('//span[contains(text(),"Got it")]')),
+      10000
+    );
+    await popupButton.click();
+
+    const inputName = await driver.wait(until.elementLocated(By.xpath('//input[@placeholder="Your name"]')), 10000);
+    await inputName.clear();
+    await inputName.sendKeys("Ginny bot");
+
+    const joinButton = await driver.wait(
+      until.elementLocated(By.xpath('//span[contains(text(),"Ask to join") or contains(text(),"Join")]')),
+      10000
+    );
+    await joinButton.click();
+
+    console.log("Waiting for meeting details element...");
+    // await driver.wait(until.elementLocated(By.xpath('//div[@aria-label="Meeting details"]')), 60000);
+    console.log("Joined the meeting successfully.");
+
+    // Start recording
+    await injectAudioRecorder(driver, socket);
+
+    // Keep the bot running
+    await driver.sleep(60 * 60 * 1000); // 1 hour
+
+  } catch (error) {
+    console.error("An error occurred:", error);
+  } finally {
+    await driver.quit();
+  }
 }
 
 main();

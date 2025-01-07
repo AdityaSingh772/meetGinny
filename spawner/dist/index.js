@@ -1,45 +1,66 @@
-"use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const selenium_webdriver_1 = require("selenium-webdriver");
-const chrome_1 = require("selenium-webdriver/chrome");
-function main() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const options = new chrome_1.Options();
-        options.addArguments("--disable-blink-features=AutomationControlled");
-        options.addArguments("--use-fake-ui-for-media-stream");
-        options.addArguments("--start-maximized");
-        let driver = yield new selenium_webdriver_1.Builder()
-            .forBrowser(selenium_webdriver_1.Browser.CHROME)
-            .setChromeOptions(options)
-            .build();
-        try {
-            yield driver.get('https://meet.google.com/gmo-emet-cgb');
-            yield driver.sleep(3000);
-            const popupButton = yield driver.wait(selenium_webdriver_1.until.elementLocated(selenium_webdriver_1.By.xpath('//span[contains(text(),"Got it")]')), 100000);
-            yield popupButton.click();
-            const inputName = yield driver.wait(selenium_webdriver_1.until.elementLocated(selenium_webdriver_1.By.xpath('//input[@placeholder="Your name"]')), 20000);
-            yield inputName.clear();
-            yield inputName.click();
-            yield inputName.sendKeys('value', "Ginny bot");
-            const buttonInput = yield driver.wait(selenium_webdriver_1.until.elementLocated(selenium_webdriver_1.By.xpath('//span[contains(text(),"Ask to join") or contains(text(),"Join")]')), 100000);
-            yield buttonInput.click();
-            yield driver.wait(selenium_webdriver_1.until.elementLocated(selenium_webdriver_1.By.id('aa1313212a')), 1000000);
-        }
-        catch (error) {
-            console.error('An error occurred:', error);
-        }
-        finally {
-            yield driver.quit();
-        }
-    });
+import { Builder, By, until } from "selenium-webdriver";
+import chrome from "selenium-webdriver/chrome.js";
+import { io } from "socket.io-client";
+import dotenv from "dotenv";
+dotenv.config();
+async function injectAudioRecorder(driver, socket) {
+    const script = `
+    (function() {
+      if (!window.MediaRecorder) {
+        alert('MediaRecorder not supported in this browser.');
+        return;
+      }
+
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          const mediaRecorder = new MediaRecorder(stream);
+          let chunks = [];
+
+          mediaRecorder.ondataavailable = function(e) {
+            chunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = function() {
+            // Handle the stop event
+          };
+        })
+        .catch(error => {
+          console.error('Error accessing media devices.', error);
+        });
+    })();
+  `;
+    await driver.executeScript(script);
+}
+async function main() {
+    let options = new chrome.Options();
+    options.addArguments("--disable-blink-features=AutomationControlled");
+    options.addArguments("--use-fake-ui-for-media-stream");
+    options.addArguments("--start-maximized");
+    options.addArguments("--disable-web-security");
+    let driver = await new Builder().forBrowser("chrome").setChromeOptions(options).build();
+    let socket = io("http://localhost:3000");
+    try {
+        await driver.get("https://meet.google.com/csg-enwe-eym");
+        const popupButton = await driver.wait(until.elementLocated(By.xpath('//span[contains(text(),"Got it")]')), 10000);
+        await popupButton.click();
+        const inputName = await driver.wait(until.elementLocated(By.xpath('//input[@placeholder="Your name"]')), 10000);
+        await inputName.clear();
+        await inputName.sendKeys("Ginny bot");
+        const joinButton = await driver.wait(until.elementLocated(By.xpath('//span[contains(text(),"Ask to join") or contains(text(),"Join")]')), 10000);
+        await joinButton.click();
+        console.log("Waiting for meeting details element...");
+        // await driver.wait(until.elementLocated(By.xpath('//div[@aria-label="Meeting details"]')), 60000);
+        console.log("Joined the meeting successfully.");
+        // Start recording
+        await injectAudioRecorder(driver, socket);
+        // Keep the bot running
+        await driver.sleep(60 * 60 * 1000); // 1 hour
+    }
+    catch (error) {
+        console.error("An error occurred:", error);
+    }
+    finally {
+        await driver.quit();
+    }
 }
 main();
